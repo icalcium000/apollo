@@ -48,36 +48,30 @@ load_dotenv()
 TG_TOKEN = os.getenv("TG_TOKEN")
 GIGA_CREDENTIALS = os.getenv("GIGA_CREDENTIALS")
 ALLOWED_CHAT_ID_STR = os.getenv("ALLOWED_CHAT_ID")
+SUPER_ADMIN_ID_STR = os.getenv("SUPER_ADMIN_ID") # Новый параметр для уведомлений
 COMMAND_PREFIX = os.getenv("COMMAND_PREFIX", "!Аполлон подскажи")
 SYSTEM_INSTRUCTION = os.getenv("SYSTEM_INSTRUCTION", "\n\n(Инструкция: ответь коротко и лаконично. В стиле божества Аполлона, аля slay дивы)")
 
 # Валидация критических данных
-if not TG_TOKEN:
-    logger.critical("Переменная TG_TOKEN не задана!")
-    sys.exit(1)
-if not GIGA_CREDENTIALS:
-    logger.critical("Переменная GIGA_CREDENTIALS не задана!")
-    sys.exit(1)
-if not ALLOWED_CHAT_ID_STR:
-    logger.critical("Переменная ALLOWED_CHAT_ID не задана!")
+if not TG_TOKEN or not GIGA_CREDENTIALS or not ALLOWED_CHAT_ID_STR:
+    logger.critical("Критические переменные окружения не заданы!")
     sys.exit(1)
 
 try:
     ALLOWED_CHAT_ID = int(ALLOWED_CHAT_ID_STR)
+    # SUPER_ADMIN_ID опционален, но важен для уведомлений
+    SUPER_ADMIN_ID = int(SUPER_ADMIN_ID_STR) if SUPER_ADMIN_ID_STR else None
 except ValueError:
-    logger.critical(f"Ошибка: ALLOWED_CHAT_ID должен быть числом, получено: {ALLOWED_CHAT_ID_STR}")
+    logger.critical("Ошибка: ALLOWED_CHAT_ID или SUPER_ADMIN_ID должны быть числами!")
     sys.exit(1)
 
 # --- РАБОТА С ПУТЯМИ ---
-# Если работаем в Docker (обычно Linux), используем /app/data, иначе локальную папку data
-if os.name == 'posix':  # Linux/Mac
+if os.name == 'posix':
     DATA_DIR = Path("/app/data")
-else:  # Windows и прочие
+else:
     DATA_DIR = Path(__file__).parent / "data"
 
-# Создаем папку, если её нет
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / "bot_database.db"
 logger.info(f"Директория данных: {DATA_DIR}")
 
 # --- ИНИЦИАЛИЗАЦИЯ БОТА ---
@@ -99,13 +93,9 @@ async def handle_apollo(message: types.Message):
         return
 
     try:
-        # Показываем статус "печатает"
         await bot.send_chat_action(message.chat.id, "typing")
-        
         full_prompt = f"{user_prompt}{SYSTEM_INSTRUCTION}"
         
-        # Контекстный менеджер для GigaChat
-        # verify_ssl_certs=False часто нужен для работы GigaChat из РФ без доп. настроек
         with GigaChat(credentials=GIGA_CREDENTIALS, verify_ssl_certs=False) as giga:
             response = giga.chat(full_prompt)
             answer = response.choices[0].message.content
@@ -119,30 +109,40 @@ async def handle_apollo(message: types.Message):
 async def log_wrong_chat(message: types.Message):
     """Логирование попыток доступа из других чатов."""
     if message.chat.id != ALLOWED_CHAT_ID:
-        logger.warning(f"Попытка вызова из чужого чата! ID: {message.chat.id}, User: @{message.from_user.username}")
+        logger.warning(f"Попытка вызова из чужого чата! ID: {message.chat.id}")
 
 # --- ФОНОВЫЕ ЗАДАЧИ ---
-async def background_monitor():
-    """Пример фоновой задачи."""
+async def hourly_status_report(bot_instance: Bot):
+    """Каждый час отправляет отчет супер-админу."""
+    if not SUPER_ADMIN_ID:
+        logger.warning("SUPER_ADMIN_ID не задан. Фоновые отчеты отключены.")
+        return
+
+    logger.info(f"Запущена задача ежечасных отчетов для админа {SUPER_ADMIN_ID}")
     while True:
-        # Здесь может быть проверка БД или рассылка
-        await asyncio.sleep(3600) # Раз в час
+        try:
+            # Сначала ждем час (3600 секунд)
+            await asyncio.sleep(3600)
+            await bot_instance.send_message(SUPER_ADMIN_ID, "Работаю")
+            logger.info("Отправлен статус 'Работаю' супер-админу.")
+        except Exception as e:
+            logger.error(f"Ошибка при отправке статуса админу: {e}")
+            # Если ошибка (например, бот заблокирован), подождем немного дольше перед повтором
+            await asyncio.sleep(60)
 
 # --- ЗАПУСК ---
 async def main():
     logger.info(f"Аполлон запущен! Слушаю чат: {ALLOWED_CHAT_ID}")
     
-    # Запуск фоновой задачи
-    asyncio.create_task(background_monitor())
+    # Запуск фоновой задачи отчетов
+    asyncio.create_task(hourly_status_report(bot))
 
     try:
-        # Очищаем очередь обновлений, которые пришли пока бот был оффлайн
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
     except Exception as e:
         logger.error(f"Ошибка при работе бота: {e}")
     finally:
-        # Graceful Shutdown
         logger.info("Завершение работы... Закрываю сессии.")
         await bot.session.close()
 
