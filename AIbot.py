@@ -8,11 +8,10 @@ from pathlib import Path
 # --- АВТОМАТИЧЕСКАЯ УСТАНОВКА ЗАВИСИМОСТЕЙ ---
 def install_dependencies():
     """Проверяет наличие библиотек и устанавливает их при необходимости."""
-    required = {"aiogram", "gigachat", "python-dotenv"}
+    required = {"aiogram", "gigachat"}
     try:
         import aiogram
         import gigachat
-        import dotenv
     except ImportError:
         logging.info("Установка недостающих библиотек...")
         try:
@@ -39,22 +38,25 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from gigachat import GigaChat
-from dotenv import load_dotenv
-
-# Загружаем переменные из .env файла, если он существует
-load_dotenv()
 
 # --- КОНФИГУРАЦИЯ ---
-TG_TOKEN = os.getenv("TOKEN")
+# Получаем токены напрямую из переменных окружения сервера
+TG_TOKEN = os.getenv("BOT_TOKEN")
 GIGA_CREDENTIALS = os.getenv("GIGA_CREDENTIALS")
 ALLOWED_CHAT_ID_STR = os.getenv("ALLOWED_CHAT_ID")
-SUPER_ADMIN_ID_STR = os.getenv("SUPER_ADMIN_ID") # Новый параметр для уведомлений
+SUPER_ADMIN_ID_STR = os.getenv("SUPER_ADMIN_ID") # Параметр для уведомлений
 COMMAND_PREFIX = os.getenv("COMMAND_PREFIX", "!Аполлон подскажи")
 SYSTEM_INSTRUCTION = os.getenv("SYSTEM_INSTRUCTION", "\n\n(Инструкция: ответь коротко и лаконично. В стиле божества Аполлона, аля slay дивы)")
 
-# Валидация критических данных
-if not TG_TOKEN or not GIGA_CREDENTIALS or not ALLOWED_CHAT_ID_STR:
-    logger.critical("Критические переменные окружения не заданы!")
+# Валидация критических данных с подробным выводом
+missing_vars = []
+if not TG_TOKEN: missing_vars.append("TG_TOKEN")
+if not GIGA_CREDENTIALS: missing_vars.append("GIGA_CREDENTIALS")
+if not ALLOWED_CHAT_ID_STR: missing_vars.append("ALLOWED_CHAT_ID")
+
+if missing_vars:
+    logger.critical(f"ОШИБКА ЗАПУСКА! Не найдены переменные окружения: {', '.join(missing_vars)}")
+    logger.critical("Убедитесь, что вы добавили их в настройки вашего сервера/хостинга!")
     sys.exit(1)
 
 try:
