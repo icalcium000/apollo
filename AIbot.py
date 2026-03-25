@@ -45,7 +45,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- КОНФИГУРАЦИЯ ---
-TG_TOKEN = os.getenv("TG_TOKEN")
+TG_TOKEN = os.getenv("TOKEN")
 GIGA_CREDENTIALS = os.getenv("GIGA_CREDENTIALS")
 ALLOWED_CHAT_ID_STR = os.getenv("ALLOWED_CHAT_ID")
 SUPER_ADMIN_ID_STR = os.getenv("SUPER_ADMIN_ID") # Новый параметр для уведомлений
